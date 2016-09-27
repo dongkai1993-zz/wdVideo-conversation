@@ -22,9 +22,9 @@
         <button id="login" onclick="login()" style="height:35px;border: 1px solid;border-radius: 3px;cursor:pointer">匿名登录</button>
         <i id="appid-tip" style="position:absolute;margin-top:40px;margin-left:-320px;font-size:15px;color:#eb3232;" hidden="">请检查appid是否正确并开启匿名登录功能！</i>
     </div>
-    <div id="videos" style="text-align:center;margin:0px auto;margin-top:80px;" hidden="">
-        <video id="local" style="border:1px solid;width:480px;height:360px;" muted="" autoplay=""></video>
-        <video id="remote" style="border:1px solid;width:480px;height:360px;margin-left:50px;" autoplay=""></video>
+    <div id="videos" style="text-align:center;margin:0px auto;margin-top:60px;" hidden="">
+        <video id="local" style="border:1px solid;width:480px;height:360px;margin-top:20px;" muted="" autoplay=""></video>
+        <video id="remote" style="border:1px solid;width:480px;height:360px;margin-left:50px;margin-top:20px;" autoplay="" hidden></video>
     </div>
     <div id="appid-text" style="margin-top:20px;"></div>
     <div id="hangup" style="height:50px;;text-align:center;margin-top:20px;" hidden="">
@@ -85,7 +85,7 @@
         //初始化野狗
         var config = {
             authDomain: appidEl.value + '.wilddog.com',
-            syncURL: "https://" + appid.value + ".wilddogio.com"
+            syncURL: "https://" + appid.value + ".wilddogio.com/wilddogVideo"
         };
 
         wilddog.initializeApp(config);
@@ -111,7 +111,7 @@
             loginBtn.disabled = true;
             auth = user;
 
-            //SDK之外保存的一个在线用户列表，匿名成功之后写入列表
+            //SDK之外保存的一个在线用户列表，匿名成功之后写入列表，列表中的用户均是可邀请和可被邀请的用户，如用户发出邀请或接受邀请后都需在列表中将自己暂时删除，结束会话后再写入用户列表
             wilddogref.child('users/' + user.uid).set(true);
             wilddogref.child('users/' + user.uid).onDisconnect().remove();
 
@@ -166,24 +166,26 @@
             currentConversation = conversation;
             hangupEl.hidden = false;
 
-            userDiv.hidden = true;
+            // userDiv.hidden = true;
 
             //在线用户列表只保存也被邀请和可邀请他人的用户，因此接受邀请后即在用户列表中将自己删除，防止其他用户再邀请
             wilddogref.child('users/' + auth.uid).remove();
 
             //监听新参与者加入conversation
             conversation.on('participant_connected', (participant) => {
-                remoteStream = participant.stream;
+                var newRemote = remote.cloneNode(true);
+                newRemote.id = participant.participantId;
+                newRemote.hidden = false;
+                videoList.appendChild(newRemote);
                 participant.stream.attach(remote);
             });
+            //监听会话参与者的断开事件
             conversation.on('participant_disconnected', (participant) => {
-                participant.stream.detach(remote);
+                var removeEl = document.getElementById(participant.participantId);
+                participant.stream.detach(removeEl);
+                videoList.removeChild(removeEl);
+                console.log(participant.participantId);
                 console.log('participant_disconnected');
-                conversation.disconnect();
-                currentConversation = null;
-                hangupEl.hidden = true;
-                userDiv.hidden = false;
-                wilddogref.child('users/' + auth.uid).set(true);
             });
         });
     };
@@ -200,7 +202,7 @@
 
         if (!currentConversation) {
             outInvite = clientInstance.inviteToConversation({
-                'mode': 'p2p',
+                'mode': 'server_based',
                 'participantId': uid,
                 'localStream': localStream,
             })
@@ -212,20 +214,20 @@
 
                 //监听新参与者加入conversation
                 conversation.on('participant_connected', (participant) => {
-                    remoteStream = participant.stream;
-
+                    var newRemote = remote.cloneNode(true);
+                    newRemote.id = participant.participantId;
+                    newRemote.hidden = false;
+                    videoList.appendChild(newRemote);
                     participant.stream.attach(remote);
                 });
 
                 //监听参与者离开conversation
                 conversation.on('participant_disconnected', (participant) => {
-                    participant.stream.detach(remote);
-                    //该示例为一对一示例，因此当对方断开后，本地也将执行Conversation的disconnect函数来主动断开conversation
-                    conversation.disconnect();
-                    currentConversation = null;
-                    hangupEl.hidden = true;
-                    userDiv.hidden = false;
-                    wilddogref.child('users/' + auth.uid).set(true);
+                    var removeEl = document.getElementById(participant.participantId);
+                    participant.stream.detach(removeEl);
+                    videoList.removeChild(removeEl);
+                    console.log(participant.participantId);
+                    console.log('participant_disconnected');
                 });
             });
 
@@ -233,27 +235,28 @@
             outInvite.on('accepted', () => {
                 wilddogref.child('users/' + auth.uid).remove();
                 hangupEl.hidden = false;
-                userDiv.hidden = true;
+                // userDiv.hidden = true;
             })
 
             //监听被邀请者的拒绝邀请的事件
             outInvite.on('rejected', () => {
                 currentConversation = null;
                 hangupEl.hidden = true;
-                userDiv.hidden = false;
+                // userDiv.hidden = false;
             })
+        } else {
+            currentConversation.invite(uid);
         }
     }
 
-    //离开当期conversation
+    //离开当前conversation
     var disconnect = function() {
         if (currentConversation) {
-            remoteStream.detach(remote);
             //Conversation提供了disconnect函数用于主动离开conversation
             currentConversation.disconnect();
             hangup.hidden = true;
             currentConversation = null;
-            userDiv.hidden = false;
+            // userDiv.hidden = false;
             wilddogref.child('users/' + auth.uid).set(true);
         }
     }
